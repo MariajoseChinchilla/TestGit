@@ -9,18 +9,23 @@ from datetime import datetime
 import gi
 gi.require_version('Gtk','3.0')
 from gi.repository import Gtk
+from gi.repository import Gdk
 import webbrowser
 import numpy as np
 import random
 import time
+import os
 
 
 class JuegoDeLaVida(Gtk.Window):
     cuenta = 0
+    normal = True   #interruptor para saber que frontera quiere el usuario, los radio botones lo modifican
+    TimeFrame = 1
+    segundos = Gtk.SpinButton()
     def __init__(self):
         super(JuegoDeLaVida, self).__init__(title='Juego de la vida')
     #Cuestiones basicas para la ventana y los contenedores
-        self.set_default_size(800, 600)
+        self.set_default_size(400, 600)
         self.set_resizable(False)  # fijar el tamaño de la ventana
         vbox = Gtk.VBox()
         self.add(vbox)
@@ -30,7 +35,6 @@ class JuegoDeLaVida(Gtk.Window):
         vbox.pack_start(grid, True, True, 0)
         self.pause = True
         self.now = datetime.now()
-
 
     #Menu y todos sus items
         menubar = Gtk.MenuBar()  # barra de menu
@@ -71,11 +75,6 @@ class JuegoDeLaVida(Gtk.Window):
         menubar.append(archivo)
         menubar.append(ayuda)
         grid.attach(menubar, 0,0, 5, 1)
-
-        #tiempo = Gtk.SpinButton()
-        #self.TimeFrame = tiempo.get_value_as_int()
-        self.TimeFrame = 0.3
-
 #el submenu de configuracion aparece siempre y no esta en la barra de menu para facilidad de modificacion de
         #las configuraciones
 
@@ -94,11 +93,13 @@ class JuegoDeLaVida(Gtk.Window):
 
         segundos_label = Gtk.Label('Segundos de espera entre turnos')
         grid.attach(segundos_label, 24, 1, 1, 3)
-        segundos = Gtk.SpinButton()
-        segundos.set_digits(2)
+        self.segundos.set_digits(2)
         ajuste = Gtk.Adjustment(lower=0.00001, upper=5, step_increment=0.01, page_increment=0.01)
-        segundos.set_adjustment(ajuste)
-        grid.attach_next_to(segundos, segundos_label, Gtk.PositionType.BOTTOM, 1, 1)
+        self.segundos.set_adjustment(ajuste)
+        grid.attach_next_to(self.segundos, segundos_label, Gtk.PositionType.BOTTOM, 1, 1)
+        boton_elegir_tiempo = Gtk.Button('Ok')
+        boton_elegir_tiempo.connect('clicked', self.tiempo_elegido)
+        grid.attach_next_to(boton_elegir_tiempo, self.segundos, Gtk.PositionType.RIGHT, 1, 1)
 
 #botones de pausar/jugar y el de tomar captura de pantalla
         pausa_jugar_boton = Gtk.Button('Jugar/Pausar')
@@ -106,7 +107,24 @@ class JuegoDeLaVida(Gtk.Window):
         grid.attach(pausa_jugar_boton, 24, 200, 1, 1)
         captura_boton = Gtk.Button('Captura de pantalla')
         captura_boton.connect('clicked', self.captura_de_pantalla)
-        grid.attach_next_to(captura_boton, pausa_jugar_boton, Gtk.PositionType.BOTTOM, 2, 2)
+        grid.attach_next_to(captura_boton, pausa_jugar_boton, Gtk.PositionType.BOTTOM, 1, 1)
+        mensaje = Gtk.Label('Capturas serán guardadas en el directorio actual.')
+        grid.attach_next_to(mensaje, captura_boton, Gtk.PositionType.BOTTOM, 1, 1)
+
+            #ACCIONES DE LOS RADIO BOTONES, SABER CUAL ESTA ELEGIDO
+# Acciones de los radio botones, esto servira para saber que tipo de forntera quiere el usuario,
+# permanecera activado para todas las configuraciones al menos que el usuario lo cambie
+    def elegido_normal(self, widget):
+        self.normal = True
+
+    def elegido_toroidal(self, widget):
+        self.normal = False
+
+#boton que guarda el tiempo de espera elegido por el usuario
+    def tiempo_elegido(self, widget):
+        self.TimeFrame = float(self.segundos.get_text())
+        #no entiendo por que si cambie el self.TimeFrame y cuando hago la figura esta indicado que use eso
+        #pero no lo cambia ya dentro de la figura
 
     #metodos para cada boton
 
@@ -126,31 +144,52 @@ class JuegoDeLaVida(Gtk.Window):
                 for i in range(len(linea)):
                     tablero[j, i] = eval(linea[j][i])
             dialogo.close()
-            self.normales_cargado(tablero)
+            if self.normal == True:     #evaluar que frontera aplicar en las reglas del juego para el archivo cargado
+                self.normales_cargado(tablero)
+            elif self.normal == False:
+                self.toroidales_cargado(tablero)
         elif respuesta == Gtk.ResponseType.CANCEL:
             pass
         dialogo.destroy()
 
-    def guardar_estado(self, widget):
-        pass
+    def guardar_estado(self, widget, tablero):   #para guardar el estado del juego siguiendo las instrucciones de la practica
+        estado = 'Estados_del_juego ' + str(self.now.year) + '-' + str(self.now.month) + '-' + str(self.now.day) + \
+                 '-' + str(self.now.hour) + '-' + str(self.now.minute) + '-' + str(self.now.second) + '.jvpm2'
+        arch = open(estado, 'w+')
+        N = int(len(tablero))
+        arch.write(str(N) + '\n')
+        for i in range(N):
+            linea = ''
+            for j in range(N):
+                linea = linea + str(tablero[j, i]) + ' '
+            arch.write(linea + '\n')
+        arch.close()
 
     def generar_jugar_aleatorio(self, widget):  #genera aleatoriamente un tablero con juego
         global N
         N = random.randint(3, 250)      #elige al azar una dimension para la cuadricula del juego
         global tablero
-        tablero = np.zeros((N, N))
-
-        for y in range(N):
-            for x in range(N):
-                tablero[y, x] = random.randint(0, 1)
+        tablero = np.zeros((N, N), dtype=int)
+#generar el tablero a partir de la informacion anterior elegida aleatoriamente
+        for i in range(N):
+            for j in range(N):
+                tablero[i, j] = random.randint(0, 1)
+        if self.normal == True:
+            self.normales_cargado(tablero)
+        elif self.normal == False:
+            self.toroidales_cargado(tablero)
 
 # funciones para cargar un archivo inicial y poner pausa y demas
 
     def play_pause(self, widget):
         self.pause ^= True      #esto va a servir como un interruptor para normal_cargado funcion
 
-    def captura_de_pantalla(click):
-        print('captura boton')
+    def captura_de_pantalla(self, widget):      #guardar captura de pantalla en el 'current working directory'
+        plt.savefig(os.getcwd() + 'Juego en curso'+ str(self.now.year) + str(self.now.month) + str(self.now.day)
+                    + str(self.now.hour) + str(self.now.minute) + str(self.now.second)+
+                    '.png', dpi = 200, facecolor = 'w')
+        cadena = str(os.getcwd())
+        print('Su captura ha sido guardada en el current working directory:' + cadena)
 
 # para evaluar que debe pasar con una celula, evaluar a sus 8 vecinas
 #considerar "mover" las celulas en las 8 direcciones. Por cada movimiento, sumar el
@@ -232,7 +271,7 @@ class JuegoDeLaVida(Gtk.Window):
             v = conteo_normales(tablero)
             nuevo_tablero = tablero.copy()
             clase = JuegoDeLaVida
-            contador = clase.cuenta
+            contador = clase.cuenta     #usar el contador inicializado en el constructor
             for i in range(nuevo_tablero.shape[0]):
                 for j in range(nuevo_tablero.shape[1]):
                     if v[i, j] == 3 or (v[i, j] == 2 and tablero[i, j]):
@@ -266,21 +305,21 @@ class JuegoDeLaVida(Gtk.Window):
             return imagen,
 
         anim = animation.FuncAnimation(fig, animacion,
-                                       frames=100, blit=True, interval=(self.TimeFrame * 1000),
+                                       frames=100, blit=True, interval=(self.TimeFrame * 1000), save_count=0,
                                        repeat=True)
         plt.show()
 
 #sospecho que se esta agregando al scrolled window pero este no esta agregado en la ventana principal
 
         #mostrar figura
-    def fronteras_toroidales(self, widget):
+    def toroidales_cargado(self, tablero):
         def vecindad(tablero):
 #conteo de las vivas para ver si una celula tiene sobrepoblacion o esta en soledad
 #np.roll podria hacerse la analogia que es como mover el tablero en las direcciones indicadas y a partir de eso, contar
             total = (
                 np.roll(np.roll(tablero, 1, 1), 1, 0) +  # Abajo-derecha
                 np.roll(tablero, 1, 0) +  # Abajo
-                np.roll(tablero(tablero, -1, 1), 1, 0) +  # Abajo-izquierda
+                np.roll(np.roll(tablero, -1, 1), 1, 0) +  # Abajo-izquierda
                 np.roll(tablero, -1, 1) +  # Izquierda
                 np.roll(np.roll(tablero, -1, 1), -1, 0) +  # Arriba-izquierda
                 np.roll(tablero, -1, 0) +  # Arriba
@@ -288,7 +327,6 @@ class JuegoDeLaVida(Gtk.Window):
                 np.roll(tablero, 1, 1)  # Derecha
             )
             return total
-
 
         def paso(tablero):
 #Aplicar las reglas del juego
@@ -302,18 +340,9 @@ class JuegoDeLaVida(Gtk.Window):
                         nuevo_tablero[i, j] = 0
             return nuevo_tablero
 
-        def animacion(i):
-            global tablero
-            if self.pause == False:
-                tablero = paso(tablero)
-                imagen.set_data(tablero)
-
-            return imagen,
-
-#parte grafica del tablero,esto luego se agrega usado un scrolled window y FigCanvas
-        fig = plt.figure(figsize=(6, 6))
+        fig = plt.figure(figsize=(4, 4))
         ax = fig.add_subplot(111)
-        titulo = f'Turno: {contador}'  # poner el numero de turno como titulo de la figura de matplotlib
+        titulo = f'Turno: {self.cuenta}'  # poner el numero de turno como titulo de la figura de matplotlib
         ax.set_title(titulo)  # agrega lo anterior como titulo de la figura
         global imagen
         imagen = ax.imshow(tablero, interpolation="none", aspect="equal", cmap=cm.bwr)
@@ -323,23 +352,19 @@ class JuegoDeLaVida(Gtk.Window):
             bottom=False,
             top=False,
             labelleft=False,
-            labelbottom=False)
+            labelbottom=True)
+
+        def animacion(i):
+            global tablero
+            if self.pause == False:
+                tablero = paso(tablero)
+                imagen.set_data(tablero)
+
+            return imagen,
 
         anim = animation.FuncAnimation(fig, animacion, frames=100, blit=True, interval=(self.TimeFrame * 1000),
                                        save_count=1, repeat=True)
         plt.show()
-
-        # botones de play/pause y de generar captura de pantalla
-        boton_jugar = Gtk.Button('Jugar/Pausa')
-        boton_jugar.connect('clicked', )
-        grid.attach_next_to(boton_jugar, scrolled, Gtk.PositionType.RIGHT, 5, 5)
-
-        boton_captura = Gtk.Button('Captura de pantalla')
-        boton_captura.connect('clicked', self.captura_de_pantalla)
-        grid.attach_next_to(boton_captura, boton_jugar, Gtk.PositionType.RIGHT, 5, 5)
-
-        t = FigureCanvas(fig)
-        scrolled.add(t)
 
     def segundos_espera(self,widget):
         pass
@@ -361,13 +386,6 @@ class JuegoDeLaVida(Gtk.Window):
 
     def codigo_fuente(self, widget):
         webbrowser.open_new_tab('https://github.com/MariajoseChinchilla/TestGit/blob/master/Main.py')
-
-
-#Acciones de los radio botones
-    def elegido_normal(self, widget):
-        pass
-    def elegido_toroidal(self, widget):
-        pass
 
 win = JuegoDeLaVida()
 win.connect('destroy', Gtk.main_quit)
