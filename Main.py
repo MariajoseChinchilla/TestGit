@@ -18,12 +18,12 @@ import os
 
 
 class JuegoDeLaVida(Gtk.Window):
-    cuenta = 0
     normal = True   #interruptor para saber que frontera quiere el usuario, los radio botones lo modifican
     TimeFrame = 1
     segundos = Gtk.SpinButton()
+    guardado = True
     def __init__(self):
-        super(JuegoDeLaVida, self).__init__(title='Juego de la vida')
+        super(JuegoDeLaVida, self).__init__(title='Juego de la vida, autómata celular')
     #Cuestiones basicas para la ventana y los contenedores
         self.set_default_size(400, 600)
         self.set_resizable(False)  # fijar el tamaño de la ventana
@@ -35,6 +35,7 @@ class JuegoDeLaVida(Gtk.Window):
         vbox.pack_start(grid, True, True, 0)
         self.pause = True
         self.now = datetime.now()
+        self.cuenta = 0
 
     #Menu y todos sus items
         menubar = Gtk.MenuBar()  # barra de menu
@@ -48,15 +49,12 @@ class JuegoDeLaVida(Gtk.Window):
         arch_menu = Gtk.Menu()
         config_inicial = Gtk.MenuItem('Cargar configuración inicial')
         arch_menu.append(config_inicial)
-        guardar = Gtk.MenuItem('Guardar estado de simulación')
-        arch_menu.append(guardar)
         generar = Gtk.MenuItem('Generar configuración aleatoria')
         arch_menu.append(generar)
         archivo.set_submenu(arch_menu)
 
         # ACCIONES DE LOS ITEMS DE ARCHIVO PARA PANTALLAS CORRESPONDIENTES SEGUN BOTON
         config_inicial.connect('activate', self.cargar_config_inicial)
-        guardar.connect('activate', self.guardar_estado)
         generar.connect('activate', self.generar_jugar_aleatorio)
 
         # SUBMENU DE AYUDA
@@ -91,6 +89,18 @@ class JuegoDeLaVida(Gtk.Window):
         radio_boton_toroidales.connect('toggled', self.elegido_toroidal)
         grid.attach_next_to(radio_boton_toroidales, radio_boton_normales, Gtk.PositionType.RIGHT, 1, 1)
 
+        # se usaran dos radio botones para guardar estado o no
+        # si esta seleccionado si, entonces se guarda automaticamente en el directorio
+        label_guardado = Gtk.Label('¿Guardar el estado de simulación en el directorio?')
+        grid.attach_next_to(label_guardado, radio_boton_normales, Gtk.PositionType.BOTTOM, 1, 1)
+        guardar_automatico = Gtk.RadioButton.new_with_label_from_widget(None, 'Guardar automáticamente')
+        guardar_automatico.connect('toggled', self.si_automatico)
+        grid.attach_next_to(guardar_automatico, label_guardado, Gtk.PositionType.BOTTOM, 1, 1)
+        no_guardar = Gtk.RadioButton.new_from_widget(guardar_automatico)
+        no_guardar.set_label('No guardar')
+        no_guardar.connect('toggled', self.no_guardar)
+        grid.attach_next_to(no_guardar, guardar_automatico, Gtk.PositionType.RIGHT, 1, 1)
+
         segundos_label = Gtk.Label('Segundos de espera entre turnos')
         grid.attach(segundos_label, 24, 1, 1, 3)
         self.segundos.set_digits(2)
@@ -114,6 +124,12 @@ class JuegoDeLaVida(Gtk.Window):
             #ACCIONES DE LOS RADIO BOTONES, SABER CUAL ESTA ELEGIDO
 # Acciones de los radio botones, esto servira para saber que tipo de forntera quiere el usuario,
 # permanecera activado para todas las configuraciones al menos que el usuario lo cambie
+    def si_automatico(self, widget):
+        self.guardado = True
+
+    def no_guardar(self, widget):
+        self.guardado = False
+
     def elegido_normal(self, widget):
         self.normal = True
 
@@ -146,13 +162,17 @@ class JuegoDeLaVida(Gtk.Window):
             dialogo.close()
             if self.normal == True:     #evaluar que frontera aplicar en las reglas del juego para el archivo cargado
                 self.normales_cargado(tablero)
+                if self.guardado == True:
+                    self.guardar_estado(tablero)
             elif self.normal == False:
                 self.toroidales_cargado(tablero)
+                if self.guardado == True:
+                    self.guardar_estado(tablero)
         elif respuesta == Gtk.ResponseType.CANCEL:
             pass
         dialogo.destroy()
 
-    def guardar_estado(self, widget, tablero):   #para guardar el estado del juego siguiendo las instrucciones de la practica
+    def guardar_estado(self,tablero):   #para guardar el estado del juego siguiendo las instrucciones de la practica
         estado = 'Estados_del_juego ' + str(self.now.year) + '-' + str(self.now.month) + '-' + str(self.now.day) + \
                  '-' + str(self.now.hour) + '-' + str(self.now.minute) + '-' + str(self.now.second) + '.jvpm2'
         arch = open(estado, 'w+')
@@ -176,8 +196,12 @@ class JuegoDeLaVida(Gtk.Window):
                 tablero[i, j] = random.randint(0, 1)
         if self.normal == True:
             self.normales_cargado(tablero)
+            if self.guardado == True:
+                self.guardar_estado(tablero)
         elif self.normal == False:
             self.toroidales_cargado(tablero)
+            if self.guardado == True:
+                self.guardar_estado(tablero)
 
 # funciones para cargar un archivo inicial y poner pausa y demas
 
@@ -270,16 +294,14 @@ class JuegoDeLaVida(Gtk.Window):
         # evaluacion de que pasara con la celula dependiendo de las reglas del juego
             v = conteo_normales(tablero)
             nuevo_tablero = tablero.copy()
-            clase = JuegoDeLaVida
-            contador = clase.cuenta     #usar el contador inicializado en el constructor
             for i in range(nuevo_tablero.shape[0]):
                 for j in range(nuevo_tablero.shape[1]):
                     if v[i, j] == 3 or (v[i, j] == 2 and tablero[i, j]):
                         nuevo_tablero[i, j] = 1
-                        contador = contador + 1
+                        self.cuenta = self.cuenta + 1
                     else:
                         nuevo_tablero[i, j] = 0
-                        contador = contador + 1
+                        self.cuenta = self.cuenta + 1
             return nuevo_tablero
 
 #creacion de figura en matplotlib
@@ -305,7 +327,7 @@ class JuegoDeLaVida(Gtk.Window):
             return imagen,
 
         anim = animation.FuncAnimation(fig, animacion,
-                                       frames=100, blit=True, interval=(self.TimeFrame * 1000), save_count=0,
+                                       frames=100, blit=True, interval=(self.TimeFrame * 1000),
                                        repeat=True)
         plt.show()
 
@@ -336,8 +358,10 @@ class JuegoDeLaVida(Gtk.Window):
                 for j in range(nuevo_tablero.shape[1]):
                     if v[i, j] == 3 or (v[i, j] == 2 and nuevo_tablero[i, j]):
                         nuevo_tablero[i, j] = 1
+                        self.cuenta = self.cuenta + 1
                     else:
                         nuevo_tablero[i, j] = 0
+                        self.cueta = self.cuenta + 1
             return nuevo_tablero
 
         fig = plt.figure(figsize=(4, 4))
